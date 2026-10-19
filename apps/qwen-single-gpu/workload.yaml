@@ -47,12 +47,10 @@ spec:
             requests:
               cpu: "2"
               memory: 8Gi
-              ephemeral-storage: 10Gi
               nvidia.com/gpu: "1"
             limits:
               cpu: "4"
               memory: 16Gi
-              ephemeral-storage: 20Gi
               nvidia.com/gpu: "1"
           startupProbe:
             httpGet:
