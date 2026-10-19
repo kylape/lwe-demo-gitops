@@ -1,0 +1,98 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qwen-single-gpu
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: qwen-single-gpu
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: qwen-single-gpu
+        kueue.x-k8s.io/queue-name: default
+    spec:
+      containers:
+        - name: vllm
+          # Upstream vLLM v0.11.0, pinned to the published image digest.
+          image: docker.io/vllm/vllm-openai:v0.11.0@sha256:014a95f21c9edf6abe0aea6b07353f96baa4ec291c427bb1176dc7c93a85845c
+          args:
+            - --model
+            - Qwen/Qwen3-0.6B
+            - --served-model-name
+            - qwen
+            - --host
+            - 0.0.0.0
+            - --port
+            - "8000"
+            - --tensor-parallel-size
+            - "1"
+            - --max-model-len
+            - "4096"
+            - --max-num-seqs
+            - "8"
+            - --gpu-memory-utilization
+            - "0.2"
+            - --enforce-eager
+          env:
+            - name: HF_HOME
+              value: /cache/huggingface
+          ports:
+            - name: http
+              containerPort: 8000
+          resources:
+            requests:
+              cpu: "2"
+              memory: 8Gi
+              ephemeral-storage: 10Gi
+              nvidia.com/gpu: "1"
+            limits:
+              cpu: "4"
+              memory: 16Gi
+              ephemeral-storage: 20Gi
+              nvidia.com/gpu: "1"
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            failureThreshold: 120
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 30
+            failureThreshold: 5
+          volumeMounts:
+            - name: cache
+              mountPath: /cache
+            - name: shm
+              mountPath: /dev/shm
+      volumes:
+        - name: cache
+          emptyDir:
+            sizeLimit: 8Gi
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: qwen-single-gpu
+spec:
+  selector:
+    app.kubernetes.io/name: qwen-single-gpu
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
