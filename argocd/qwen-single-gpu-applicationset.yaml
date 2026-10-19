@@ -1,0 +1,36 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: qwen-single-gpu
+  namespace: llm-workload-environment-operator
+spec:
+  goTemplate: true
+  goTemplateOptions:
+    - missingkey=error
+  generators:
+    - clusters:
+        selector:
+          matchLabels:
+            argocd.argoproj.io/secret-type: cluster
+            llm.redhat.com/application-profile: qwen-single-gpu
+  syncPolicy:
+    applicationsSync: sync
+    preserveResourcesOnDeletion: true
+  template:
+    metadata:
+      name: '{{.nameNormalized}}-qwen-single-gpu'
+    spec:
+      project: lwe-demo
+      source:
+        repoURL: https://github.com/kylape/lwe-demo-gitops.git
+        targetRevision: main
+        path: apps/qwen-single-gpu
+      destination:
+        server: '{{.server}}'
+        namespace: demo-app
+      syncPolicy:
+        automated:
+          prune: false
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
