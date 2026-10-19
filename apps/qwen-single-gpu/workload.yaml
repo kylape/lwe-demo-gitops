@@ -3,7 +3,8 @@ kind: Deployment
 metadata:
   name: qwen-single-gpu
 spec:
-  replicas: 1
+  # Paused until vCluster preserves host-added Kueue scheduling gates.
+  replicas: 0
   strategy:
     type: Recreate
   selector:
