@@ -5,11 +5,19 @@ The `qwen-single-gpu` profile deploys Qwen/Qwen3-0.6B with the upstream
 NVIDIA GPU and exposes the OpenAI-compatible API on a ClusterIP Service at
 `qwen-single-gpu.demo-app.svc:8000`, with served model name `qwen`.
 
+The Deployment is currently paused at zero replicas after live testing exposed
+a vCluster syncer bug: guest Pod reconciliation removes host-added Kueue
+scheduling gates, causing repeated Pod termination and replacement. Keep it
+paused until the syncer preserves host-owned gates, then change `replicas` back
+to `1` in Git and let Argo CD synchronize the update.
+
 The small, public model needs no Hugging Face token. Model files use an
 ephemeral cache and are downloaded again when the Pod is replaced. The
 Deployment uses `Recreate` to avoid requesting a second GPU during upgrades.
 The Pod carries the `default` Kueue label; admission enforcement depends on
 the host cluster's Kueue configuration and namespace selection.
+CPU, memory, and GPU are the only explicitly requested resources because the
+demo ClusterQueue does not cover ephemeral storage; cache volumes remain bounded.
 
 ## Manual activation
 
