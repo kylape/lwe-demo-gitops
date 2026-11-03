@@ -90,9 +90,14 @@ kubectl apply \
 ```
 
 After the `openshift-gitops` namespace and default Argo CD instance are ready,
-apply the tracked Application:
+grant its application controller the cluster permissions needed to install
+operators, Gateway API resources, and cluster-scoped policies, then apply the
+tracked Application:
 
 ```bash
+kubectl apply \
+  --kubeconfig ~/workspace/ai-grid-test/batch-gateway-20261103.kubeconfig \
+  -f argocd/guest-application-controller-rbac.yaml
 kubectl apply \
   --kubeconfig ~/workspace/ai-grid-test/batch-gateway-20261103.kubeconfig \
   -f argocd/guest-application.yaml
