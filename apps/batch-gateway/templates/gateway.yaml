@@ -22,6 +22,7 @@ metadata:
   name: {{ .Values.gateway.externalName }}
   namespace: openshift-ingress
   annotations:
+    networking.istio.io/service-type: ClusterIP
     argocd.argoproj.io/sync-wave: "30"
 spec:
   gatewayClassName: {{ .Values.gateway.gatewayClass }}
@@ -52,6 +53,25 @@ spec:
             kind: Secret
             name: {{ .Values.gateway.certificateSecret }}
         mode: Terminate
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ .Values.gateway.externalName }}
+  namespace: openshift-ingress
+  annotations:
+    argocd.argoproj.io/sync-wave: "31"
+spec:
+  host: {{ .Values.gateway.externalHostname | quote }}
+  to:
+    kind: Service
+    name: {{ .Values.gateway.externalName }}-{{ .Values.gateway.gatewayClass }}
+    weight: 100
+  port:
+    targetPort: https
+  tls:
+    termination: passthrough
+  wildcardPolicy: None
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
