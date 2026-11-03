@@ -34,7 +34,7 @@ model:
   namespace: llm
   serviceName: batch-simulator
   id: test/batch-gateway-model
-  poolName: batch-simulator
+  poolName: batch-simulator-inference-pool
 
 minio:
   accessKeyId: batch-gateway
