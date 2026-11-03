@@ -1,0 +1,294 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: psql-keycloak-pvc
+  namespace: postgresql
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: {{ .Values.storage.postgresql }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: psql-keycloak
+  namespace: postgresql
+  labels:
+    app: psql-keycloak
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: psql-keycloak
+  template:
+    metadata:
+      labels:
+        app: psql-keycloak
+        name: psql-keycloak
+    spec:
+      initContainers:
+        - name: fix-permissions
+          image: {{ .Values.images.postgresql | quote }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              bootstrap_dir() {
+                if [ -e "$1" ] && [ ! -d "$1" ]; then
+                  mv "$1" "$1.stale.$(date +%s)"
+                elif [ -d "$1" ] && { [ ! -r "$1" ] || [ ! -w "$1" ] || [ ! -x "$1" ]; }; then
+                  mv "$1" "$1.stale.$(date +%s)"
+                fi
+                mkdir -p "$1"
+              }
+              bootstrap_dir /var/lib/pgsql/data
+              bootstrap_dir /var/lib/pgsql/data/userdata
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/pgsql/data
+      containers:
+        - name: postgresql
+          image: {{ .Values.images.postgresql | quote }}
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRESQL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-db-secret
+                  key: username
+            - name: POSTGRESQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-db-secret
+                  key: password
+            - name: POSTGRESQL_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-db-secret
+                  key: database
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/pgsql/data
+          readinessProbe:
+            exec:
+              command: ["/bin/sh", "-c", "pg_isready -h 127.0.0.1 -p 5432"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["/bin/sh", "-c", "pg_isready -h 127.0.0.1 -p 5432"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: psql-keycloak-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: psql-keycloak
+  namespace: postgresql
+spec:
+  selector:
+    app: psql-keycloak
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-data
+  namespace: redis
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: {{ .Values.storage.redis }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: redis
+  labels:
+    app: redis
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      initContainers:
+        - name: fix-permissions
+          image: {{ .Values.images.minio | quote }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              bootstrap_dir() {
+                if [ -e "$1" ] && [ ! -d "$1" ]; then
+                  mv "$1" "$1.stale.$(date +%s)"
+                elif [ -d "$1" ] && { [ ! -r "$1" ] || [ ! -w "$1" ] || [ ! -x "$1" ]; }; then
+                  mv "$1" "$1.stale.$(date +%s)"
+                fi
+                mkdir -p "$1"
+              }
+              bootstrap_dir /data
+              if [ -d /data/.minio.sys ]; then
+                mv /data/.minio.sys "/data/.minio.sys.stale.$(date +%s)"
+              fi
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      containers:
+        - name: redis
+          image: {{ .Values.images.redis | quote }}
+          args: ["/usr/bin/run-redis", "--requirepass", "$(REDIS_PASSWORD)", "--appendonly", "yes"]
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-secret
+                  key: password
+          ports:
+            - name: redis
+              containerPort: 6379
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/redis/data
+          readinessProbe:
+            exec:
+              command: ["/bin/sh", "-c", "redis-cli -a \"$REDIS_PASSWORD\" ping | grep -q PONG"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["/bin/sh", "-c", "redis-cli -a \"$REDIS_PASSWORD\" ping | grep -q PONG"]
+            initialDelaySeconds: 15
+            periodSeconds: 20
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: redis-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: redis
+spec:
+  selector:
+    app: redis
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: minio-pvc
+  namespace: minio
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: {{ .Values.storage.minio }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minio
+  namespace: minio
+  labels:
+    app: minio
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: minio
+  template:
+    metadata:
+      labels:
+        app: minio
+    spec:
+      containers:
+        - name: minio
+          image: {{ .Values.images.minio | quote }}
+          args: ["server", "/data", "--console-address", ":9001"]
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: minio-secret
+                  key: accesskey
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: minio-secret
+                  key: secretkey
+          ports:
+            - name: api
+              containerPort: 9000
+            - name: console
+              containerPort: 9001
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /minio/health/ready
+              port: api
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: api
+            initialDelaySeconds: 30
+            periodSeconds: 20
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: minio-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  namespace: minio
+spec:
+  selector:
+    app: minio
+  ports:
+    - name: api
+      port: 9000
+      targetPort: api

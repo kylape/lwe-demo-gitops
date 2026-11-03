@@ -1,0 +1,112 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: batch-simulator-model
+  namespace: {{ .Values.model.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "15"
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: {{ .Values.storage.model }}
+---
+apiVersion: serving.kserve.io/v1alpha1
+kind: LLMInferenceService
+metadata:
+  name: {{ .Values.model.serviceName }}
+  namespace: {{ .Values.model.namespace }}
+  annotations:
+    security.opendatahub.io/enable-auth: "true"
+    argocd.argoproj.io/sync-wave: "20"
+spec:
+  model:
+    uri: pvc://batch-simulator-model/
+    name: {{ .Values.model.id | quote }}
+  replicas: 1
+  router:
+    route: {}
+    gateway:
+      refs:
+        - name: {{ .Values.gateway.externalName }}
+          namespace: openshift-ingress
+    scheduler:
+      config:
+        inline:
+          apiVersion: inference.networking.x-k8s.io/v1alpha1
+          kind: EndpointPickerConfig
+          featureGates:
+            - flowControl
+          plugins:
+            - type: round-robin-fairness-policy
+            - type: global-strict-fairness-policy
+            - type: slo-deadline-ordering-policy
+            - type: utilization-detector
+              parameters:
+                queueDepthThreshold: 5
+                kvCacheUtilThreshold: 0.8
+          schedulingProfiles: []
+          flowControl:
+            maxBytes: 4294967296
+            defaultRequestTTL: 30s
+            priorityBands:
+              - priority: 100
+                maxBytes: 1073741824
+                fairnessPolicyRef: round-robin-fairness-policy
+                orderingPolicyRef: fcfs-ordering-policy
+              - priority: -1
+                maxBytes: 3221225472
+                fairnessPolicyRef: global-strict-fairness-policy
+                orderingPolicyRef: slo-deadline-ordering-policy
+            defaultPriorityBand:
+              maxBytes: 536870912
+              fairnessPolicyRef: global-strict-fairness-policy
+              orderingPolicyRef: fcfs-ordering-policy
+  template:
+    containers:
+      - name: main
+        image: {{ .Values.images.simulator | quote }}
+        imagePullPolicy: IfNotPresent
+        command: ["/app/llm-d-inference-sim"]
+        args:
+          - --port
+          - "8000"
+          - --model
+          - {{ .Values.model.id | quote }}
+          - --mode
+          - random
+          - --ssl-certfile
+          - /var/run/kserve/tls/tls.crt
+          - --ssl-keyfile
+          - /var/run/kserve/tls/tls.key
+          - --force-dummy-tokenizer
+        env:
+          - name: POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+        ports:
+          - name: https
+            containerPort: 8000
+            protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: https
+            scheme: HTTPS
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: https
+            scheme: HTTPS
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi

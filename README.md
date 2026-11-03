@@ -63,3 +63,35 @@ but leaves the model running unmanaged, consuming its GPU. Automatic pruning
 is disabled, and `preserveResourcesOnDeletion` is enabled. To stop the model,
 delete its Deployment and Service explicitly in the guest cluster, or scale
 the Deployment to zero after removing the label.
+
+## Batch Gateway profile
+
+`apps/batch-gateway` contains the RHOAI 3.6 Batch Gateway installation and the
+small supporting stack used by Shepard: cert-manager, RHCL/Kuadrant, PostgreSQL,
+Redis, MinIO, and the CPU-friendly llm-d simulator. It enables the RHOAI
+`aigateway.batchGateway` and KServe components through the DataScienceCluster.
+The secret bootstrap Job generates Redis, PostgreSQL, and MinIO credentials in
+the cluster; credential values are not stored in Git.
+
+The profile is intended for a clean, connected HyperShift guest. The simulator
+image is digest-pinned on GHCR, while RHOAI images use the mirrors configured
+on the LWE. A fully disconnected guest also needs GHCR simulator mirroring.
+The chart's `gateway.externalHostname` and `gateway.certificateSecret` values
+must match the guest cluster's apps domain and ingress certificate before sync.
+
+Create the profile's AppProject and ApplicationSet on the LWE management
+cluster, then create the HyperShift LWE from the tracked manifest:
+
+```bash
+kubectl apply --kubeconfig ~/workspace/ai-grid-test/lwe-kubeconfig \
+  -f argocd/batch-gateway-project.yaml
+kubectl apply --kubeconfig ~/workspace/ai-grid-test/lwe-kubeconfig \
+  -f argocd/batch-gateway-applicationset.yaml
+kubectl apply --kubeconfig ~/workspace/ai-grid-test/lwe-kubeconfig \
+  -f environments/batch-gateway/llmworkloadenvironment.yaml
+```
+
+The LWE's `llm.redhat.com/application-profile=batch-gateway` label registers
+the ready guest with Argo CD and selects the ApplicationSet. The LWE expires
+after 24 hours. The ApplicationSet's source revision is the deployment branch;
+change it to `main` after the branch is merged.

@@ -1,0 +1,39 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: batch-gateway
+  namespace: grid-gitops
+spec:
+  goTemplate: true
+  goTemplateOptions:
+    - missingkey=error
+  generators:
+    - clusters:
+        selector:
+          matchLabels:
+            argocd.argoproj.io/secret-type: cluster
+            llm.redhat.com/application-profile: batch-gateway
+  syncPolicy:
+    applicationsSync: sync
+    preserveResourcesOnDeletion: true
+  template:
+    metadata:
+      name: '{{.nameNormalized}}-batch-gateway'
+    spec:
+      project: lwe-demo
+      source:
+        repoURL: https://github.com/kylape/lwe-demo-gitops.git
+        targetRevision: feat/batch-gateway-lwe
+        path: apps/batch-gateway
+        helm:
+          releaseName: batch-gateway
+      destination:
+        server: '{{.server}}'
+        namespace: batch-api
+      syncPolicy:
+        automated:
+          prune: false
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - SkipDryRunOnMissingResource=true

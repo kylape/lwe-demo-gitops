@@ -1,0 +1,136 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: {{ .Values.gateway.gatewayClass }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  controllerName: openshift.io/gateway-controller/v1
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-issuer
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+spec:
+  selfSigned: {}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: {{ .Values.gateway.externalName }}
+  namespace: openshift-ingress
+  annotations:
+    argocd.argoproj.io/sync-wave: "30"
+spec:
+  gatewayClassName: {{ .Values.gateway.gatewayClass }}
+  listeners:
+    - name: http
+      hostname: {{ .Values.gateway.externalHostname | quote }}
+      port: 80
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              llm-d.ai/gateway-route: "true"
+    - name: https
+      hostname: {{ .Values.gateway.externalHostname | quote }}
+      port: 443
+      protocol: HTTPS
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              llm-d.ai/gateway-route: "true"
+      tls:
+        certificateRefs:
+          - group: ""
+            kind: Secret
+            name: {{ .Values.gateway.certificateSecret }}
+        mode: Terminate
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: {{ .Values.gateway.internalName }}
+  namespace: openshift-ingress
+  annotations:
+    networking.istio.io/service-type: ClusterIP
+    argocd.argoproj.io/sync-wave: "30"
+spec:
+  gatewayClassName: {{ .Values.gateway.gatewayClass }}
+  listeners:
+    - name: http
+      port: 80
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              llm-d.ai/gateway-route: "true"
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: batch-internal-gateway-authn-ssl
+  namespace: openshift-ingress
+  annotations:
+    argocd.argoproj.io/sync-wave: "35"
+spec:
+  configPatches:
+    - applyTo: CLUSTER
+      match:
+        cluster:
+          service: authorino-authorino-authorization.kuadrant-system.svc.cluster.local
+      patch:
+        operation: ADD
+        value:
+          connect_timeout: 1s
+          http2_protocol_options: {}
+          lb_policy: ROUND_ROBIN
+          load_assignment:
+            cluster_name: kuadrant-auth-service
+            endpoints:
+              - lb_endpoints:
+                  - endpoint:
+                      address:
+                        socket_address:
+                          address: authorino-authorino-authorization.kuadrant-system.svc.cluster.local
+                          port_value: 50051
+          name: kuadrant-auth-service
+          transport_socket:
+            name: envoy.transport_sockets.tls
+            typed_config:
+              '@type': type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+              common_tls_context:
+                validation_context:
+                  trusted_ca:
+                    filename: /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt
+          type: STRICT_DNS
+  priority: -1
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: {{ .Values.gateway.internalName }}
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: batch-gateway-backend-tls
+  namespace: openshift-ingress
+  annotations:
+    argocd.argoproj.io/sync-wave: "40"
+spec:
+  host: batch-gateway-apiserver.batch-api.svc.cluster.local
+  trafficPolicy:
+    portLevelSettings:
+      - port:
+          number: 8000
+        tls:
+          mode: SIMPLE
+          insecureSkipVerify: true

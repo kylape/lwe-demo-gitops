@@ -1,0 +1,171 @@
+apiVersion: batch.llm-d.ai/v1alpha1
+kind: LLMBatchGateway
+metadata:
+  name: batch-gateway
+  namespace: {{ .Values.batchGateway.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "40"
+spec:
+  secretRef:
+    name: batch-gateway-secrets
+  dbBackend: postgresql
+  fileStorage:
+    s3:
+      bucket: batch-gateway
+      region: us-east-1
+      endpoint: http://minio.minio.svc.cluster.local:9000
+      accessKeyId: {{ .Values.minio.accessKeyId | quote }}
+      prefix: batch-gateway
+      usePathStyle: true
+      autoCreateBucket: true
+  apiServer:
+    replicas: 1
+  processor:
+    replicas: 1
+    modelGateways:
+      {{ .Values.model.id | quote }}:
+        inferencePoolName: {{ .Values.model.poolName }}
+    asyncConfig:
+      resultPollTimeout: 5m
+      inferenceGateway:
+        url: http://{{ .Values.gateway.internalService }}.openshift-ingress.svc.cluster.local/{{ .Values.model.namespace }}/{{ .Values.model.serviceName }}
+      redis:
+        requestPathURL: /v1/completions
+  gc:
+    interval: {{ .Values.batchGateway.gcInterval }}
+  tls:
+    enabled: true
+    certManager:
+      issuerName: selfsigned-issuer
+      issuerKind: ClusterIssuer
+      dnsNames:
+        - batch-gateway-apiserver
+        - batch-gateway-apiserver.{{ .Values.batchGateway.namespace }}.svc.cluster.local
+        - localhost
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: batch-route
+  namespace: {{ .Values.batchGateway.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "45"
+spec:
+  parentRefs:
+    - name: {{ .Values.gateway.externalName }}
+      namespace: openshift-ingress
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /v1/batches
+        - path:
+            type: PathPrefix
+            value: /v1/files
+      backendRefs:
+        - name: batch-gateway-apiserver
+          port: 8000
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: batch-llm-route
+  namespace: {{ .Values.model.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "45"
+spec:
+  parentRefs:
+    - name: {{ .Values.gateway.internalName }}
+      namespace: openshift-ingress
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /{{ .Values.model.namespace }}/{{ .Values.model.serviceName }}/v1/completions
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /v1/completions
+      backendRefs:
+        - group: inference.networking.k8s.io
+          kind: InferencePool
+          name: {{ .Values.model.poolName }}
+          port: 8000
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /{{ .Values.model.namespace }}/{{ .Values.model.serviceName }}/v1/chat/completions
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /v1/chat/completions
+      backendRefs:
+        - group: inference.networking.k8s.io
+          kind: InferencePool
+          name: {{ .Values.model.poolName }}
+          port: 8000
+---
+apiVersion: kuadrant.io/v1
+kind: AuthPolicy
+metadata:
+  name: batch-route-auth
+  namespace: {{ .Values.batchGateway.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "50"
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: batch-route
+  rules:
+    authentication:
+      kubernetes-user:
+        kubernetesTokenReview:
+          audiences:
+            - https://kubernetes.default.svc
+---
+apiVersion: kuadrant.io/v1
+kind: RateLimitPolicy
+metadata:
+  name: batch-ratelimit
+  namespace: {{ .Values.batchGateway.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "50"
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: batch-route
+  limits:
+    per-user:
+      rates:
+        - limit: 20
+          window: 1m
+      counters:
+        - expression: auth.identity.user.username
+---
+apiVersion: kuadrant.io/v1alpha1
+kind: TokenRateLimitPolicy
+metadata:
+  name: inference-token-limit
+  namespace: openshift-ingress
+  annotations:
+    argocd.argoproj.io/sync-wave: "50"
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: {{ .Values.gateway.externalName }}
+  limits:
+    per-user:
+      rates:
+        - limit: 500
+          window: 1m
+      when:
+        - predicate: request.path.endsWith("/v1/completions")
+      counters:
+        - expression: auth.identity.user.username

@@ -1,0 +1,31 @@
+apiVersion: dscinitialization.opendatahub.io/v2
+kind: DSCInitialization
+metadata:
+  name: default-dsci
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+spec:
+  applicationsNamespace: redhat-ods-applications
+  monitoring:
+    managementState: Managed
+    metrics: {}
+    namespace: redhat-ods-monitoring
+  trustedCABundle:
+    customCABundle: ""
+    managementState: Managed
+---
+apiVersion: datasciencecluster.opendatahub.io/v2
+kind: DataScienceCluster
+metadata:
+  name: default-dsc
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  components:
+    aigateway:
+      managementState: Managed
+      batchGateway:
+        managementState: Managed
+    kserve:
+      managementState: Managed
+      rawDeploymentServiceConfig: Headed

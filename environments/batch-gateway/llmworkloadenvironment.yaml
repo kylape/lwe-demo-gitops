@@ -1,0 +1,35 @@
+apiVersion: llm.redhat.com/v1alpha1
+kind: LLMWorkloadEnvironment
+metadata:
+  name: batch-gateway-20261103
+  namespace: klape-dev
+  labels:
+    llm.redhat.com/application-profile: batch-gateway
+spec:
+  duration: 24h
+  clusterQueue: inference-workspace-test
+  hypershift:
+    profile: default
+    size: small
+    replicas: 1
+    pullSecret:
+      name: rhai-pull-secret
+    imageDigestMirrorSet:
+      imageDigestMirrors:
+        - source: registry.redhat.io/rhoai
+          mirrors:
+            - quay.io/rhoai
+          mirrorSourcePolicy: NeverContactSource
+        - source: registry.redhat.io/rhaii
+          mirrors:
+            - registry.stage.redhat.io/rhaii
+          mirrorSourcePolicy: NeverContactSource
+        - source: registry.redhat.io/rhaii-early-access
+          mirrors:
+            - registry.stage.redhat.io/rhaii-early-access
+          mirrorSourcePolicy: NeverContactSource
+        - source: registry.redhat.io/rhaii-fast
+          mirrors:
+            - registry.stage.redhat.io/rhaii-fast
+          mirrorSourcePolicy: NeverContactSource
+  mode: HyperShift
