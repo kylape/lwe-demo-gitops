@@ -19,6 +19,7 @@ metadata:
   annotations:
     security.opendatahub.io/enable-auth: "true"
     argocd.argoproj.io/sync-wave: "20"
+    argocd.argoproj.io/sync-options: SkipHealthCheck=true
 spec:
   model:
     uri: pvc://batch-simulator-model/
