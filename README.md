@@ -79,19 +79,25 @@ on the LWE. A fully disconnected guest also needs GHCR simulator mirroring.
 The chart's `gateway.externalHostname` and `gateway.certificateSecret` values
 must match the guest cluster's apps domain and ingress certificate before sync.
 
-Create the profile's AppProject and ApplicationSet on the LWE management
-cluster, then create the HyperShift LWE from the tracked manifest:
+The guest uses its own OpenShift GitOps installation. The LWE management
+cluster's Argo CD integration is not required. Once the LWE is ready, install
+OpenShift GitOps in the guest and create its Application:
 
 ```bash
-kubectl apply --kubeconfig ~/workspace/ai-grid-test/lwe-kubeconfig \
-  -f argocd/batch-gateway-project.yaml
-kubectl apply --kubeconfig ~/workspace/ai-grid-test/lwe-kubeconfig \
-  -f argocd/batch-gateway-applicationset.yaml
-kubectl apply --kubeconfig ~/workspace/ai-grid-test/lwe-kubeconfig \
-  -f environments/batch-gateway/llmworkloadenvironment.yaml
+kubectl apply \
+  --kubeconfig ~/workspace/ai-grid-test/batch-gateway-20261103.kubeconfig \
+  -f argocd/guest-operator.yaml
 ```
 
-The LWE's `llm.redhat.com/application-profile=batch-gateway` label registers
-the ready guest with Argo CD and selects the ApplicationSet. The LWE expires
-after 24 hours. The ApplicationSet's source revision is the deployment branch;
-change it to `main` after the branch is merged.
+After the `openshift-gitops` namespace and default Argo CD instance are ready,
+apply the tracked Application:
+
+```bash
+kubectl apply \
+  --kubeconfig ~/workspace/ai-grid-test/batch-gateway-20261103.kubeconfig \
+  -f argocd/guest-application.yaml
+```
+
+The Application syncs `apps/batch-gateway` from this deployment branch into the
+guest cluster. Change its `targetRevision` to `main` after the branch is merged.
+The LWE itself expires 24 hours after creation.
