@@ -1,12 +1,12 @@
 apiVersion: llm.redhat.com/v1alpha1
 kind: LLMWorkloadEnvironment
 metadata:
-  name: batch-gateway-20261103
+  name: batch-gateway-20261104
   namespace: klape-dev
   labels:
     llm.redhat.com/application-profile: batch-gateway
 spec:
-  duration: 24h
+  duration: 48h
   clusterQueue: inference-workspace-test
   hypershift:
     profile: default
