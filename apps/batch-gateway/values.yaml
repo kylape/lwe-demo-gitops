@@ -7,7 +7,7 @@ operators:
   catalogSource: redhat-operators
   sourceNamespace: openshift-marketplace
   certManagerChannel: stable-v1
-  rhclChannel: stable
+  rhclChannel: stable-1.4
 
 images:
   cli: quay.io/openshift/origin-cli:4.22
