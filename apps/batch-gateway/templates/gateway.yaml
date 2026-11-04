@@ -23,6 +23,7 @@ metadata:
   namespace: openshift-ingress
   annotations:
     networking.istio.io/service-type: ClusterIP
+    security.opendatahub.io/authorino-tls-bootstrap: "true"
     argocd.argoproj.io/sync-wave: "10"
 spec:
   gatewayClassName: {{ .Values.gateway.gatewayClass }}
