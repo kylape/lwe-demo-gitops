@@ -1,0 +1,23 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: batch-gateway
+  namespace: openshift-gitops
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/kylape/lwe-demo-gitops.git
+    targetRevision: feat/batch-gateway-lwe
+    path: apps/batch-gateway
+    helm:
+      releaseName: batch-gateway
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: batch-api
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - SkipDryRunOnMissingResource=true

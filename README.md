@@ -63,3 +63,46 @@ but leaves the model running unmanaged, consuming its GPU. Automatic pruning
 is disabled, and `preserveResourcesOnDeletion` is enabled. To stop the model,
 delete its Deployment and Service explicitly in the guest cluster, or scale
 the Deployment to zero after removing the label.
+
+## Batch Gateway profile
+
+`apps/batch-gateway` contains the RHOAI 3.6 Batch Gateway installation and the
+small supporting stack used by Shepard: cert-manager, RHCL/Kuadrant, PostgreSQL,
+Redis, MinIO, and the CPU-friendly llm-d simulator. It enables the RHOAI
+`aigateway.batchGateway` and KServe components through the DataScienceCluster.
+The secret bootstrap Job generates Redis, PostgreSQL, and MinIO credentials in
+the cluster; credential values are not stored in Git.
+
+The profile is intended for a clean, connected HyperShift guest. The simulator
+image is digest-pinned on GHCR, while RHOAI images use the mirrors configured
+on the LWE. A fully disconnected guest also needs GHCR simulator mirroring.
+The chart's `gateway.externalHostname` and `gateway.certificateSecret` values
+must match the guest cluster's apps domain and ingress certificate before sync.
+
+The guest uses its own OpenShift GitOps installation. The LWE management
+cluster's Argo CD integration is not required. Once the LWE is ready, install
+OpenShift GitOps in the guest and create its Application:
+
+```bash
+kubectl apply \
+  --kubeconfig ~/workspace/ai-grid-test/batch-gateway-20261103.kubeconfig \
+  -f argocd/guest-operator.yaml
+```
+
+After the `openshift-gitops` namespace and default Argo CD instance are ready,
+grant its application controller the cluster permissions needed to install
+operators, Gateway API resources, and cluster-scoped policies, then apply the
+tracked Application:
+
+```bash
+kubectl apply \
+  --kubeconfig ~/workspace/ai-grid-test/batch-gateway-20261103.kubeconfig \
+  -f argocd/guest-application-controller-rbac.yaml
+kubectl apply \
+  --kubeconfig ~/workspace/ai-grid-test/batch-gateway-20261103.kubeconfig \
+  -f argocd/guest-application.yaml
+```
+
+The Application syncs `apps/batch-gateway` from this deployment branch into the
+guest cluster. Change its `targetRevision` to `main` after the branch is merged.
+The LWE itself expires 24 hours after creation.
