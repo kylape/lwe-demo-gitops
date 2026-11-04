@@ -7,7 +7,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/kylape/lwe-demo-gitops.git
-    targetRevision: feat/batch-gateway-lwe
+    targetRevision: main
     path: apps/batch-gateway
     helm:
       releaseName: batch-gateway
