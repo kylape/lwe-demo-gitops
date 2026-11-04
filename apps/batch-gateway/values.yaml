@@ -24,7 +24,7 @@ storage:
 
 gateway:
   externalName: openshift-ai-inference
-  externalHostname: llm-inference.apps.cluster.batch-gateway-20261103-0dd6958330.apps.openshift.nm.rdu4.corp.redhat.com
+  externalHostname: llm-inference.apps.cluster.batch-gateway-20261104-73390ccd88.apps.openshift.nm.rdu4.corp.redhat.com
   certificateSecret: default-ingress-cert
   internalName: batch-internal-gateway
   internalService: batch-internal-gateway-openshift-default

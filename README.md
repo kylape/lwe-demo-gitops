@@ -85,7 +85,7 @@ OpenShift GitOps in the guest and create its Application:
 
 ```bash
 kubectl apply \
-  --kubeconfig ~/workspace/ai-grid-test/batch-gateway-20261103.kubeconfig \
+  --kubeconfig ~/workspace/ai-grid-test/batch-gateway-20261104.kubeconfig \
   -f argocd/guest-operator.yaml
 ```
 
@@ -96,13 +96,12 @@ tracked Application:
 
 ```bash
 kubectl apply \
-  --kubeconfig ~/workspace/ai-grid-test/batch-gateway-20261103.kubeconfig \
+  --kubeconfig ~/workspace/ai-grid-test/batch-gateway-20261104.kubeconfig \
   -f argocd/guest-application-controller-rbac.yaml
 kubectl apply \
-  --kubeconfig ~/workspace/ai-grid-test/batch-gateway-20261103.kubeconfig \
+  --kubeconfig ~/workspace/ai-grid-test/batch-gateway-20261104.kubeconfig \
   -f argocd/guest-application.yaml
 ```
 
-The Application syncs `apps/batch-gateway` from this deployment branch into the
-guest cluster. Change its `targetRevision` to `main` after the branch is merged.
-The LWE itself expires 24 hours after creation.
+The Application syncs `apps/batch-gateway` from `main` into the guest cluster.
+The LWE itself expires 48 hours after creation.
