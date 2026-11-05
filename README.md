@@ -64,65 +64,83 @@ is disabled, and `preserveResourcesOnDeletion` is enabled. To stop the model,
 delete its Deployment and Service explicitly in the guest cluster, or scale
 the Deployment to zero after removing the label.
 
-## RHOAI platform and Batch Gateway
+## RHOAI developer environment
 
-The platform and workload are separate Argo CD applications so the RHOAI
-foundation can be installed and managed independently. Apply the platform first,
-wait for the RHOAI operator and DataScienceCluster to become ready, then apply
-the Batch Gateway application.
+`apps/rhoai-platform` is the shared RHOAI 3.6 nightly profile. It installs the
+RHOAI operator and DataScienceCluster, cert-manager, the OpenShift
+`GatewayClass`, RHCL/Kuadrant with Authorino TLS, PostgreSQL, and the
+`selfsigned-issuer`. PostgreSQL provisions both `keycloak` and `batch`
+databases. These common services support RHOAI inference, MaaS, and Batch
+Gateway development.
 
-`apps/rhoai-platform` owns the RHOAI 3.6 nightly catalog and operator,
-cert-manager, the OpenShift `GatewayClass`, `DSCInitialization`, and
-`DataScienceCluster`. The DataScienceCluster enables KServe and the
-`aigateway.batchGateway` capability; it does not create a Batch Gateway
-instance.
+`apps/batch-gateway` is an optional workload profile layered on that platform.
+It adds Redis, MinIO, the simulator model, gateways, policies, and the
+`LLMBatchGateway` instance. Secret values are generated in the cluster and are
+not stored in Git.
 
-`apps/batch-gateway` owns the workload and its supporting stack: RHCL/Kuadrant,
-PostgreSQL, Redis, MinIO, the CPU-friendly llm-d simulator, gateways, policies,
-and the `LLMBatchGateway` instance. Its secret bootstrap Job generates Redis,
-PostgreSQL, and MinIO credentials in the cluster; credential values are not
-stored in Git.
+### 1. Create a HyperShift LWE
 
-Both applications target a clean, connected HyperShift guest. The simulator
-image is digest-pinned on GHCR, while RHOAI images use the mirrors configured
-on the LWE. A fully disconnected guest also needs GHCR simulator mirroring.
-The batch chart's `gateway.externalHostname` and `gateway.certificateSecret`
-values must match the guest cluster's apps domain and ingress certificate
-before sync.
-
-The guest uses its own OpenShift GitOps installation. The LWE management
-cluster's Argo CD integration is not required. Once the LWE is ready, install
-OpenShift GitOps in the guest:
+`environments/inference-e2e/llmworkloadenvironment.yaml` is a 48-hour example
+with the RHOAI and RHAII digest mirrors. Apply it to a host-cluster namespace
+that has the `rhai-pull-secret` and `inference-workspace-test` ClusterQueue, and
+change the LWE name if it is already in use:
 
 ```bash
-kubectl apply \
-  --kubeconfig ~/workspace/ai-grid-test/batch-gateway-20261104.kubeconfig \
-  -f argocd/guest-operator.yaml
+export HOST_KUBECONFIG=/path/to/host-lwe-kubeconfig
+export LWE_NAMESPACE=<your-namespace>
+
+kubectl apply --kubeconfig "$HOST_KUBECONFIG" \
+  -n "$LWE_NAMESPACE" \
+  -f environments/inference-e2e/llmworkloadenvironment.yaml
 ```
 
-After the `openshift-gitops` namespace and default Argo CD instance are ready,
-grant its application controller the cluster permissions needed to install
-operators, Gateway API resources, and cluster-scoped policies. Apply the RHOAI
-platform Application first:
+Wait for the LWE to become Ready and save its guest kubeconfig to a private
+file. The current mirror list covers RHOAI/RHAII images. For a disconnected
+run, mirror the `llm-d-inference-sim` image and add its registry mapping too.
+
+### 2. Apply the RHOAI platform
+
+The guest uses its own OpenShift GitOps installation. Set `GUEST_KUBECONFIG`
+to the kubeconfig produced for the LWE, install OpenShift GitOps, then grant its
+application controller the permissions required by the platform resources:
 
 ```bash
-kubectl apply \
-  --kubeconfig ~/workspace/ai-grid-test/batch-gateway-20261104.kubeconfig \
+export GUEST_KUBECONFIG=/path/to/guest-kubeconfig
+
+kubectl apply --kubeconfig "$GUEST_KUBECONFIG" -f argocd/guest-operator.yaml
+# Wait for the openshift-gitops namespace and default Argo CD instance.
+kubectl apply --kubeconfig "$GUEST_KUBECONFIG" \
   -f argocd/guest-application-controller-rbac.yaml
-kubectl apply \
-  --kubeconfig ~/workspace/ai-grid-test/batch-gateway-20261104.kubeconfig \
+kubectl apply --kubeconfig "$GUEST_KUBECONFIG" \
   -f argocd/guest-rhoai-platform-application.yaml
 ```
 
-Wait until the `rhoai-platform` Application is Synced and Healthy and the
-DataScienceCluster reports Ready. Then create the Batch Gateway Application:
+Wait for the `rhoai-platform` Application to become Synced and Healthy and for
+`default-dsc` to report Ready. The inference gateway must accept the
+`inference-gateway-access=true` namespace label used by inference-e2e.
+
+### 3. Run inference-e2e
+
+From a local clone of
+[`inference-e2e`](https://github.com/opendatahub-io/llm-d-e2e), install the
+project dependencies and run the mock smoke case. Mock mode uses
+`llm-d-inference-sim`, so this path does not require a GPU:
 
 ```bash
-kubectl apply \
-  --kubeconfig ~/workspace/ai-grid-test/batch-gateway-20261104.kubeconfig \
-  -f argocd/guest-application.yaml
+uv sync
+uv run llm-d-e2e --setup 3.6-ea2 \
+  -t single-gpu-smoke --mock \
+  --kubeconfig "$GUEST_KUBECONFIG" -v
 ```
 
-The `rhoai-platform` and `batch-gateway` Applications sync their respective
-paths from `main` into the guest cluster. The LWE itself expires 48 hours after
-creation.
+Use the same 3.6 manifest ref when adding a testcase or manifest; use a fork
+with `--manifest-repo` while developing changes. After the smoke case passes,
+run the broader profile in `configs/profiles/3.6.yaml` with the GPU capacity and
+model access its testcases need.
+
+### Optional Batch Gateway profile
+
+After the platform is ready, apply `argocd/guest-application.yaml` to sync
+`apps/batch-gateway`. The batch chart's `gateway.externalHostname` and
+`gateway.certificateSecret` values must match the guest cluster's apps domain
+and ingress certificate before sync. The LWE expires 48 hours after creation.

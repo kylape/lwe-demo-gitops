@@ -26,16 +26,16 @@ apply_secret() {
     --dry-run=client -o yaml | oc apply -f -
 }
 
-PG_USER=$(ensure_value postgresql keycloak-db-secret username 8)
-PG_PASSWORD=$(ensure_value postgresql keycloak-db-secret password 32)
+PG_USER=$(read_secret postgresql keycloak-db-secret username)
+PG_PASSWORD=$(read_secret postgresql keycloak-db-secret password)
+if [[ -z "$PG_USER" || -z "$PG_PASSWORD" ]]; then
+  echo "PostgreSQL credentials are missing; sync the rhoai-platform profile first" >&2
+  exit 1
+fi
 REDIS_PASSWORD=$(ensure_value redis redis-secret password 32)
 MINIO_ACCESS_KEY="${MINIO_ACCESS_KEY:-batch-gateway}"
 MINIO_SECRET_KEY=$(ensure_value minio minio-secret secretkey 32)
 
-apply_secret postgresql keycloak-db-secret \
-  --from-literal="username=${PG_USER}" \
-  --from-literal="password=${PG_PASSWORD}" \
-  --from-literal=database=batch
 apply_secret redis redis-secret \
   --from-literal="password=${REDIS_PASSWORD}"
 apply_secret minio minio-secret \

@@ -1,6 +1,6 @@
 apiVersion: v2
 name: batch-gateway
-description: Batch Gateway and its isolated supporting infrastructure for RHOAI
+description: Optional Batch Gateway workload profile for the RHOAI platform
 type: application
 version: 0.1.0
 appVersion: "3.6"

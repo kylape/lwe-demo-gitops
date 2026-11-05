@@ -1,6 +1,6 @@
 apiVersion: v2
 name: rhoai-platform
-description: RHOAI operator and platform components for the Batch Gateway environment
+description: RHOAI 3.6 platform and shared prerequisites for inference, MaaS, and Batch Gateway
 type: application
 version: 0.1.0
 appVersion: "3.6"
