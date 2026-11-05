@@ -1,0 +1,12 @@
+rhoai:
+  catalogImage: quay.io/rhoai/rhoai-fbc-fragment:rhoai-3.6
+  channel: stable-3.6
+  catalogSource: rhoai-catalog-dev
+
+operators:
+  catalogSource: redhat-operators
+  sourceNamespace: openshift-marketplace
+  certManagerChannel: stable-v1
+
+gateway:
+  gatewayClass: openshift-default

@@ -64,24 +64,35 @@ is disabled, and `preserveResourcesOnDeletion` is enabled. To stop the model,
 delete its Deployment and Service explicitly in the guest cluster, or scale
 the Deployment to zero after removing the label.
 
-## Batch Gateway profile
+## RHOAI platform and Batch Gateway
 
-`apps/batch-gateway` contains the RHOAI 3.6 Batch Gateway installation and the
-small supporting stack used by Shepard: cert-manager, RHCL/Kuadrant, PostgreSQL,
-Redis, MinIO, and the CPU-friendly llm-d simulator. It enables the RHOAI
-`aigateway.batchGateway` and KServe components through the DataScienceCluster.
-The secret bootstrap Job generates Redis, PostgreSQL, and MinIO credentials in
-the cluster; credential values are not stored in Git.
+The platform and workload are separate Argo CD applications so the RHOAI
+foundation can be installed and managed independently. Apply the platform first,
+wait for the RHOAI operator and DataScienceCluster to become ready, then apply
+the Batch Gateway application.
 
-The profile is intended for a clean, connected HyperShift guest. The simulator
+`apps/rhoai-platform` owns the RHOAI 3.6 nightly catalog and operator,
+cert-manager, the OpenShift `GatewayClass`, `DSCInitialization`, and
+`DataScienceCluster`. The DataScienceCluster enables KServe and the
+`aigateway.batchGateway` capability; it does not create a Batch Gateway
+instance.
+
+`apps/batch-gateway` owns the workload and its supporting stack: RHCL/Kuadrant,
+PostgreSQL, Redis, MinIO, the CPU-friendly llm-d simulator, gateways, policies,
+and the `LLMBatchGateway` instance. Its secret bootstrap Job generates Redis,
+PostgreSQL, and MinIO credentials in the cluster; credential values are not
+stored in Git.
+
+Both applications target a clean, connected HyperShift guest. The simulator
 image is digest-pinned on GHCR, while RHOAI images use the mirrors configured
 on the LWE. A fully disconnected guest also needs GHCR simulator mirroring.
-The chart's `gateway.externalHostname` and `gateway.certificateSecret` values
-must match the guest cluster's apps domain and ingress certificate before sync.
+The batch chart's `gateway.externalHostname` and `gateway.certificateSecret`
+values must match the guest cluster's apps domain and ingress certificate
+before sync.
 
 The guest uses its own OpenShift GitOps installation. The LWE management
 cluster's Argo CD integration is not required. Once the LWE is ready, install
-OpenShift GitOps in the guest and create its Application:
+OpenShift GitOps in the guest:
 
 ```bash
 kubectl apply \
@@ -91,8 +102,8 @@ kubectl apply \
 
 After the `openshift-gitops` namespace and default Argo CD instance are ready,
 grant its application controller the cluster permissions needed to install
-operators, Gateway API resources, and cluster-scoped policies, then apply the
-tracked Application:
+operators, Gateway API resources, and cluster-scoped policies. Apply the RHOAI
+platform Application first:
 
 ```bash
 kubectl apply \
@@ -100,8 +111,18 @@ kubectl apply \
   -f argocd/guest-application-controller-rbac.yaml
 kubectl apply \
   --kubeconfig ~/workspace/ai-grid-test/batch-gateway-20261104.kubeconfig \
+  -f argocd/guest-rhoai-platform-application.yaml
+```
+
+Wait until the `rhoai-platform` Application is Synced and Healthy and the
+DataScienceCluster reports Ready. Then create the Batch Gateway Application:
+
+```bash
+kubectl apply \
+  --kubeconfig ~/workspace/ai-grid-test/batch-gateway-20261104.kubeconfig \
   -f argocd/guest-application.yaml
 ```
 
-The Application syncs `apps/batch-gateway` from `main` into the guest cluster.
-The LWE itself expires 48 hours after creation.
+The `rhoai-platform` and `batch-gateway` Applications sync their respective
+paths from `main` into the guest cluster. The LWE itself expires 48 hours after
+creation.
