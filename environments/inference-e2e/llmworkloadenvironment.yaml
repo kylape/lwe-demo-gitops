@@ -2,8 +2,6 @@ apiVersion: llm.redhat.com/v1alpha1
 kind: LLMWorkloadEnvironment
 metadata:
   name: inference-e2e-dev
-  labels:
-    llm.redhat.com/application-profile: rhoai-platform
 spec:
   duration: 48h
   clusterQueue: inference-workspace-test
